@@ -71,14 +71,14 @@ const downloadTsList = list => {
       let index = 0;
 
       for (let item of splitDownloadList) {
-        console.log(`正在下载第${++index}分片..........................`);
+        console.log(`downloading ${++index} region..........................`);
         await Promise.all(
           item.map(async (item, n) => {
             return downloadTsItem(item, (index - 1) * 10 + n);
           })
         );
       }
-      console.log("全部下载完成！");
+      console.log("Downloading finished！");
       resolve();
     } catch (e) {
       reject(e);
@@ -101,14 +101,14 @@ const downloadTsItem = (item, name) => {
       if (status === 200) {
         const stream = fs.createWriteStream(`${targetPath}/${name}.ts`);
         stream.on("close", () => {
-          console.log(item + "下载完成！");
+          console.log(item + " downloaded！");
           resolve();
         });
         data.pipe(stream);
       }
     } catch (e) {
       console.error(e);
-      console.log(item + "下载失败！正在重新下载...");
+      console.log(item + " redownloading...");
       return downloadTsItem(item, name);
     }
   });
@@ -146,7 +146,7 @@ module.exports = (source, outputPath) => {
       let index = 0;
 
       for (let item of list) {
-        console.log(`正在合并第${++index}个文件...`);
+        console.log(`combining NO.${++index} file...`);
         const data = await streamToBuffer(
           fs.createReadStream(`${targetPath}/${item}`)
         );
