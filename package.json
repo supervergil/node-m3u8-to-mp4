@@ -6,12 +6,25 @@
     "name": "supervergil",
     "url": "https://www.zhangyangjun.com"
   },
-  "main": "lib/metro.esm.js",
+  "scripts": {
+    "compile": "babel index.js --out-file compiled.js",
+    "example": "node example.js"
+  },
+  "main": "compiled.js",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/supervergil/m3u8-to-mp4.git"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "axios": "^0.18.0",
+    "fs-extra": "^7.0.1"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.2.3",
+    "@babel/core": "^7.3.3",
+    "@babel/preset-env": "^7.3.1",
+    "babel-plugin-transform-regenerator": "^6.26.0",
+    "babel-polyfill": "^6.26.0"
+  }
 }
