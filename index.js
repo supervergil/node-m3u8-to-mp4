@@ -5,7 +5,7 @@ const path = require("path");
 const https = require("https");
 const axios = require("axios");
 
-const targetPath = path.resolve("tmp");
+const targetPath = path.resolve(".tmp");
 
 // 解析m3u8主文件
 
