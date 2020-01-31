@@ -26,5 +26,3 @@ converter("http://m3u8-url","to/your/path.extension").then(() => {
   console.log("finished");
 });
 ```
-
-see mechanism: [https://www.zhangyangjun.com/post/m3u8-to-mp4-development.html](https://www.zhangyangjun.com/post/m3u8-to-mp4-development.html)
