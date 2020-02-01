@@ -16,7 +16,7 @@ npm install node-m3u8-to-mp4 -S
 ```
 const converter = require("node-m3u8-to-mp4");
 
-converter("http://m3u8-url","to/your/path.mp4",(status)=>{
+converter("http://m3u8-url","to/your/path.mp4",(status, index, total)=>{
   case "generating":
     console.log("extracting...");
     break;
