@@ -1,7 +1,19 @@
 {
   "name": "node-m3u8-to-mp4",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "convert m3u8 to mp4",
+  "keywords": [
+    "m3u8",
+    "m3u8 parser",
+    "parse m3u8",
+    "download video",
+    "download m3u8",
+    "video downloader",
+    "mp4 downloader",
+    "mp3 downloader",
+    "m3u8 to mp4",
+    "m3u8 to mp3"
+  ],
   "author": {
     "name": "supervergil",
     "url": "https://www.zhangyangjun.com"
