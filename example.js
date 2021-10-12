@@ -1,25 +1,51 @@
-const converter = require("node-m3u8-to-mp4");
+const {
+  mParser,
+  mDownloader,
+  mConverter,
+  mIndicator,
+} = require("node-m3u8-to-mp4");
 
-converter(
-  `https://valipl.cp31.ott.cibntv.net/6976CF7866B3D7191F4073335/03000600005C11547D373362B3B7DB0F1B5537-C756-4535-B2FA-EEE6A258115B-1-114.m3u8?ccode=0502&duration=2747&expire=18000&psid=08b2612957f4a1bdebf61e52b0c371af&ups_client_netip=dde3ca27&ups_ts=1580544472&ups_userid=&utid=9c98Fju4siQCATFPBqymWxvd&vid=XMzk1Mzc1NDQ4MA&vkey=Aac9012361a5a024acb648ab0afe4f20e&sm=1&operate_type=1&dre=u37&si=73&iv=0&s=cbfbd194962411de83b1&bc=2`,
-  "video.mp4",
-  (status, index, total) => {
-    switch (status) {
-      case "generating":
-        console.log("extracting...");
-        break;
-      case "downloading":
-        console.log(
-          "downloading process:" + ((index / total) * 100).toFixed(2) + "%"
-        );
-        break;
-      case "combining":
-        console.log(
-          "combining mp4 process:" + ((index / total) * 100).toFixed(2) + "%"
-        );
-        break;
-    }
-  }
-).then(() => {
-  console.log("done!");
+const path = require("path");
+const fse = require("fs-extra");
+
+// 设定进度指示器（可不设置）
+mIndicator("downloading", (index, total) => {
+  console.log("下载进度:" + ((index / total) * 100).toFixed(2) + "%");
+});
+
+mIndicator("converting", (index, total) => {
+  console.log("转换进度:" + ((index / total) * 100).toFixed(2) + "%");
+});
+
+// 过程：解析视频资源列表(mParser)->下载资源片段(mDownloader)->片段合成文件(mConverter)
+
+// 解析资源列表，第二个参数为远程请求文件时的请求头，可留空
+mParser(path.join(__dirname, "./index.m3u8"), {
+  referer: "https://www.great-elec.com/",
+}).then((list) => {
+  // [{url:"",isFull:boolean},...] 资源列表，若url不是完整的互联网路径，可根据isFull字段做二次处理
+  const medias = list.map((item) => `${item.url}`);
+
+  console.log("解析完成，开始下载");
+
+  // 下载媒体列表，配置项可留空，targetPath为存储片段的临时文件夹路径默认为'.tmp'，headers为远程请求头
+  mDownloader(medias, {
+    targetPath: path.resolve(".target"),
+    headers: {
+      referer: "https://www.great-elec.com/",
+    },
+  })
+    .then(() => {
+      console.log("下载完成，正在转换");
+
+      // 下载完成后，根据临时文件夹路径，合成视频到指定位置的指定格式，最后一个参数表示是否要在程序运行完后清除临时目录，默认为true
+      mConverter(path.resolve(".target"), "./video.mp4").then(() => {
+        console.log("已生成文件");
+      });
+    })
+    .catch((e) => {
+      console.log("下载出错！");
+      // 下载出错，可将指定下载的临时目录删除
+      fse.removeSync(path.resolve(".target"));
+    });
 });

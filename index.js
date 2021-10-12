@@ -6,53 +6,42 @@ const path = require("path");
 const https = require("https");
 const axios = require("axios");
 
-// consts
+// 常用变量
 const targetPath = path.resolve(".tmp");
-const isRemoteReg = /(http|ftp|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?/;
+const isRemoteReg =
+  /(http|ftp|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?/;
 const hostReg = /^(http|ftp|https):\/\/((?!\/).)*/;
 const m3u8Reg = /\.m3u8$/;
+const timeout = 30000;
 
-// functions
-const generateMediaList = async source => {
-  try {
-    let mediaList = [];
-    // judge local or remote
-    if (isRemoteReg.test(source)) {
-      //  remote use axios parse
-      mediaList = await parseRemote(source);
-    } else {
-      //  local use fse parse
-      mediaList = await parseLocal(source);
-    }
-    return mediaList;
-  } catch (e) {
-    throw e;
-  }
-};
+// 全局指示器函数
+let onDownloading = () => {};
+let onCombining = () => {};
 
-const parseRemote = async url => {
+// 解析远程m3u8函数
+const parseRemote = async (url, headers) => {
   try {
-    const urlPath = url
-      .split("/")
-      .slice(0, -1)
-      .join("/");
+    const urlPath = url.split("/").slice(0, -1).join("/");
     const host = url.match(hostReg)[0];
     const { status, data } = await axios.get(url, {
+      headers,
+      timeout,
       httpsAgent: new https.Agent({
         rejectUnauthorized: false,
-        agent: false
-      })
+        agent: false,
+      }),
     });
     if (status === 200) {
       let tmpList = [];
       const infoList = data
         .split("\n")
         .filter(
-          item => item.replace(/\s*/g, "").length > 0 && !item.startsWith("#")
+          (item) => item.replace(/\s*/g, "").length > 0 && !item.startsWith("#")
         );
       for (let item of infoList) {
         let tmpUrl = "";
-        if (isRemoteReg.test(item)) {
+        let isRemote = isRemoteReg.test(item);
+        if (isRemote) {
           tmpUrl = item;
         } else {
           if (item.startsWith("/")) {
@@ -62,9 +51,9 @@ const parseRemote = async url => {
           }
         }
         if (m3u8Reg.test(item)) {
-          tmpList = tmpList.concat(await parseRemote(tmpUrl));
+          tmpList = tmpList.concat(await parseRemote(tmpUrl, headers));
         } else {
-          tmpList.push(tmpUrl);
+          tmpList.push({ url: tmpUrl, isFull: isRemote });
         }
       }
       return tmpList;
@@ -76,28 +65,27 @@ const parseRemote = async url => {
   }
 };
 
-const parseLocal = async url => {
+// 解析本地m3u8函数
+const parseLocal = async (url, headers) => {
   try {
-    const urlPath = url
-      .split("/")
-      .slice(0, -1)
-      .join("/");
+    const urlPath = url.split("/").slice(0, -1).join("/");
     let tmpList = [];
     const data = fs.readFileSync(url, "utf-8");
     const infoList = data
       .split("\n")
       .filter(
-        item => item.replace(/\s*/g, "").length > 0 && !item.startsWith("#")
+        (item) => item.replace(/\s*/g, "").length > 0 && !item.startsWith("#")
       );
     for (let item of infoList) {
-      if (isRemoteReg.test(item)) {
-        tmpList = tmpList.concat(await parseRemote(item));
+      let isRemote = isRemoteReg.test(item);
+      if (isRemote) {
+        tmpList = tmpList.concat(await parseRemote(item, headers));
       } else {
         let tmpUrl = `${urlPath}/${item}`;
         if (m3u8Reg.test(item)) {
-          tmpList = tmpList.concat(await parseLocal(tmpUrl));
+          tmpList = tmpList.concat(await parseLocal(tmpUrl, headers));
         } else {
-          tmpList.push(tmpUrl);
+          tmpList.push({ url: tmpUrl, isFull: isRemote });
         }
       }
     }
@@ -107,59 +95,60 @@ const parseLocal = async url => {
   }
 };
 
-// download media list
-const downloadMedia = (list, cb) => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // make dir
-      if (!fs.existsSync(targetPath)) {
-        fs.mkdirSync(targetPath);
-      }
-
-      // split list 10 per
-      const splitDownloadList = list.reduce((current, next, index) => {
-        if (index % 10 === 0) {
-          current.push([next]);
-          return current;
-        } else {
-          current[Math.floor(index / 10)].push(next);
-          return current;
+// 超时比较函数
+const compare = (startTime, path, size, cb) => {
+  let timer = setTimeout(() => {
+    if (Date.now() - startTime > timeout) {
+      if (fs.existsSync(path)) {
+        const fileInfo = fs.statSync(path);
+        if (size < fileInfo.size) {
+          clearTimeout(timer);
+          return compare(startTime, path, fileInfo.size, cb);
         }
-      }, []);
-
-      let index = 0;
-
-      cb && cb("downloading", index, splitDownloadList.length);
-
-      for (let item of splitDownloadList) {
-        ++index;
-        await Promise.all(
-          item.map((item, n) => downloadTsItem(item, (index - 1) * 10 + n))
-        );
-        cb && cb("downloading", index, splitDownloadList.length);
       }
-      resolve();
+    } else {
+      clearTimeout(timer);
+      return compare(startTime, path, size, cb);
+    }
+    clearTimeout(timer);
+    cb();
+  }, 3000);
+};
+
+// 流转buffer函数
+const streamToBuffer = (stream) =>
+  new Promise(async (resolve, reject) => {
+    try {
+      const bufferArr = [];
+      stream.on("data", (data) => {
+        bufferArr.push(data);
+      });
+      stream.on("error", (e) => {
+        reject(e);
+      });
+      stream.on("end", () => {
+        resolve(Buffer.concat(bufferArr));
+      });
     } catch (e) {
       reject(e);
     }
-    return true;
   });
-};
 
-// download Ts Item
-const downloadTsItem = (item, name) => {
+// 下载媒体片段
+const downloadTsItem = (item, name, targetPath, headers = {}) => {
   return new Promise(async (resolve, reject) => {
     try {
       const stream = fs.createWriteStream(`${targetPath}/${name}.ts`, {
-        emitClose: true
+        emitClose: true,
       });
       const { status, data } = await axios.get(item, {
-        timeout: 10000,
+        timeout,
         responseType: "stream",
         httpsAgent: new https.Agent({
           rejectUnauthorized: false,
-          agent: false
-        })
+          agent: false,
+        }),
+        headers,
       });
       if (status === 200) {
         let fileSize = 0;
@@ -183,71 +172,86 @@ const downloadTsItem = (item, name) => {
             over = true;
             data.destroy();
             stream.destroy();
-            downloadTsItem(item, name).then(() => resolve());
+            downloadTsItem(item, name, targetPath, headers).then(() =>
+              resolve()
+            );
           }
         });
       } else {
         throw new Error("网络错误");
       }
     } catch (e) {
-      downloadTsItem(item, name).then(() => resolve());
+      downloadTsItem(item, name, targetPath, headers).then(() => resolve());
       reject(e);
     }
   });
 };
 
-const compare = (startTime, path, size, cb) => {
-  let timer = setTimeout(() => {
-    if (Date.now() - startTime > 10000) {
-      if (fs.existsSync(path)) {
-        const fileInfo = fs.statSync(path);
-        if (size < fileInfo.size) {
-          clearTimeout(timer);
-          return compare(startTime, path, fileInfo.size, cb);
-        }
-      }
+// m3u8解析器
+const mParser = async (source, headers = {}) => {
+  try {
+    let mediaList = [];
+    // 判断资源是否为远程资源
+    if (isRemoteReg.test(source)) {
+      //  远程资源用axios
+      mediaList = await parseRemote(source, headers);
     } else {
-      clearTimeout(timer);
-      return compare(startTime, path, size, cb);
+      //  本地资源用fse
+      mediaList = await parseLocal(source, headers);
     }
-    clearTimeout(timer);
-    cb();
-  }, 3000);
+    return mediaList;
+  } catch (e) {
+    throw e;
+  }
 };
 
-// stream to buffer
-const streamToBuffer = stream =>
-  new Promise(async (resolve, reject) => {
+// m3u8下载器
+const mDownloader = (list, { targetPath = targetPath, headers = {} }) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      const bufferArr = [];
-      stream.on("data", data => {
-        bufferArr.push(data);
-      });
-      stream.on("error", e => {
-        reject(e);
-      });
-      stream.on("end", () => {
-        resolve(Buffer.concat(bufferArr));
-      });
+      // 创建临时目录
+      if (!fs.existsSync(targetPath)) {
+        fs.mkdirSync(targetPath);
+      }
+
+      // split list 10 per
+      const splitDownloadList = list.reduce((current, next, index) => {
+        if (index % 10 === 0) {
+          current.push([next]);
+          return current;
+        } else {
+          current[Math.floor(index / 10)].push(next);
+          return current;
+        }
+      }, []);
+
+      let index = 0;
+
+      // 指示器hook
+      onDownloading(index, splitDownloadList.length);
+
+      for (let item of splitDownloadList) {
+        ++index;
+        await Promise.all(
+          item.map((item, n) =>
+            downloadTsItem(item, (index - 1) * 10 + n, targetPath, headers)
+          )
+        );
+        // 指示器hook
+        onDownloading(index, splitDownloadList.length);
+      }
+      resolve();
     } catch (e) {
       reject(e);
     }
+    return true;
   });
+};
 
-module.exports = (source, outputPath, cb) =>
-  new Promise(async (resolve, reject) => {
+// m3u8转换器
+const mConverter = async (targetPath, outputPath, remove = true) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // remove target path
-      fse.removeSync(targetPath);
-
-      // get ts file list
-      cb && cb("generating");
-      const mediaList = await generateMediaList(source);
-
-      // download media files
-      await downloadMedia(mediaList, cb);
-
-      // combine
       const tsList = fs.readdirSync(targetPath).sort((prev, next) => {
         return parseInt(prev) - parseInt(next);
       });
@@ -256,18 +260,42 @@ module.exports = (source, outputPath, cb) =>
 
       for (let item of tsList) {
         ++index;
-        cb && cb("combining", index, tsList.length);
+        // 指示器hook
+        onCombining(index, tsList.length);
         const data = await streamToBuffer(
           fs.createReadStream(`${targetPath}/${item}`)
         );
         fs.appendFileSync(outputPath, data);
       }
 
-      // remove target path
-      fse.removeSync(targetPath);
+      // 移除临时目录
+      if (remove) {
+        fse.removeSync(targetPath);
+      }
       resolve();
     } catch (e) {
-      fse.removeSync(targetPath);
+      if (remove) {
+        fse.removeSync(targetPath);
+      }
       reject(e);
     }
   });
+};
+
+const mIndicator = (state, cb) => {
+  switch (state) {
+    case "downloading":
+      onDownloading = cb;
+      break;
+    case "converting":
+      onCombining = cb;
+      break;
+  }
+};
+
+module.exports = {
+  mParser,
+  mDownloader,
+  mConverter,
+  mIndicator,
+};

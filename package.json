@@ -1,6 +1,6 @@
 {
   "name": "node-m3u8-to-mp4",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "description": "convert m3u8 to mp4",
   "keywords": [
     "m3u8",
@@ -16,27 +16,30 @@
   ],
   "author": {
     "name": "supervergil",
-    "url": "https://www.zhangyangjun.com"
+    "url": "https://github.com/supervergil/node-m3u8-to-mp4"
   },
   "scripts": {
-    "compile": "babel index.js --out-file compiled.js",
-    "example": "node example.js"
+    "uglify": "uglifyjs compiled.js -c -m -o compiled.js",
+    "compile": "babel index.js --out-file compiled.js && npm run uglify",
+    "example": "node example.js",
+    "example-local": "node example-local.js"
   },
   "main": "compiled.js",
-  "license": "MIT",
+  "license": "GPL",
   "repository": {
     "type": "git",
     "url": "https://github.com/supervergil/m3u8-to-mp4.git"
   },
   "dependencies": {
-    "axios": "^0.18.0",
-    "fs-extra": "^7.0.1",
+    "axios": "^0.21.0",
+    "fs-extra": "^10.0.0",
     "babel-polyfill": "^6.26.0"
   },
   "devDependencies": {
     "@babel/cli": "^7.2.3",
     "@babel/core": "^7.3.3",
     "@babel/preset-env": "^7.3.1",
-    "babel-plugin-transform-regenerator": "^6.26.0"
+    "babel-plugin-transform-regenerator": "^6.26.0",
+    "uglify-js": "^3.14.2"
   }
 }
